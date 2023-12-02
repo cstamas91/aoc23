@@ -1,97 +1,114 @@
 ﻿var lines = File.ReadAllText("input").Split(Environment.NewLine);
 
-var constraints = new Dictionary<string, int>
+var constraints = new List<Pick>()
 {
-    {"red", 12},
-    {"green", 13},
-    {"blue", 14}
+    new(12, Color.Red),
+    new(13, Color.Green),
+    new(14, Color.Blue)
 };
 
-static Line ProcessLine(string line)
+static Game ProcessLine(string line)
 {
     var head = line.Split(':')[0];
     var tail = line.Split(':')[1]; 
 
     var idParsed = int.TryParse(head.Replace("Game ", ""), out int id);
 
-    var picks = tail.Split(',').SelectMany(s => s.Split(';'));
+    var picks = ProcessPicks(tail);
 
-    var pickStats = new Dictionary<string, (int min, int max)>();
+    var topPicks = new List<Pick>();
 
-    foreach (var pickSubstring in picks) 
+    foreach (var pick in picks) 
     {
-        var pick = ProcessPick(pickSubstring);
+        var currentTopPickForColor = topPicks.FirstOrDefault(p => p.Color == pick.Color);
 
-        if (pickStats.ContainsKey(pick.Color)){
-            if (pickStats[pick.Color].max < pick.Count) {
-                pickStats[pick.Color] = (pickStats[pick.Color].min, pick.Count);
+        if (currentTopPickForColor is not null) 
+        {
+            if (currentTopPickForColor.Count < pick.Count)
+            {
+                currentTopPickForColor.Count = pick.Count;
             }
-            if (pickStats[pick.Color].min > pick.Count) {
-                pickStats[pick.Color] = (pick.Count, pickStats[pick.Color].max);
-            }
-        } else {
-            pickStats.Add(pick.Color, (pick.Count, pick.Count));
+        }
+        else 
+        {
+            topPicks.Add(pick);
         }
     }
 
+    return new Game(id, topPicks);
+}
 
-    return new Line(id, pickStats);
+static List<Pick> ProcessPicks(string picksString)
+{
+    var pickSubstrings = picksString.Split(',').SelectMany(s => s.Split(';'));
+    return pickSubstrings.Select(ProcessPick).ToList();
 }
 
 static Pick ProcessPick(string pickSubstring)
 {
     var segments = pickSubstring.TrimStart().Split(' ');
-
-    return new Pick(int.Parse(segments[0]), segments[1]);
+    return new Pick(int.Parse(segments[0]), Enum.Parse<Color>(segments[1], ignoreCase: true));
 }
 
-static void GetGoodGameIdSum(string[] lines, Dictionary<string, int> constraints)
+static void GetGoodGameIdSum(string[] lines, List<Pick> constraints)
 {
     var ggIdSum = 0;
     var powerSum = 0;
 
-    foreach (var line in lines)
-    {
-        var game = ProcessLine(line);
-        if (game.IsConstraintSatisfied(constraints)) {
-            ggIdSum += game.Id;
-        }
+    var games = lines.Select(ProcessLine);
 
-        powerSum += game.Power;
-
-        Console.WriteLine($"[{line}] -> {game.Power}");
-    }
+    var goodGames = games.Where(g => g.IsConstraintSatisfied(constraints)).ToList();
+    ggIdSum = goodGames.Sum(g => g.Id);
+    powerSum = games.Sum(g => g.Power);
 
     Console.WriteLine($"IdSum: {ggIdSum}, PowerSum: {powerSum}");
 }
 
 GetGoodGameIdSum(lines, constraints);
 
-class Line
+class Game
 {
-    private readonly Dictionary<string, (int min, int max)> topPicks;
+    private readonly List<Pick> topPicks;
 
-    public int Power => topPicks.Values.Aggregate(1, (curr, next) => curr * next.max);
+    public int Power => topPicks.Aggregate(1, (curr, next) => curr * next.Count);
     public int Id {get; private set;}
 
-    public Line(int id, Dictionary<string, (int min, int max)> picks)
+    public Game(int id, List<Pick> picks)
     {
         Id = id;
-        this.topPicks = picks;
+        topPicks = picks;
     }
 
-    public bool IsConstraintSatisfied(Dictionary<string, int> constraint)
-    {
-        foreach (var color in constraint.Keys)
-        {
-            if (topPicks.ContainsKey(color) && constraint[color] < topPicks[color].max)
-            {
-                return false;
-            }
-        }
+    public bool IsConstraintSatisfied(List<Pick> constraint) =>
+        constraint.All(constraintPick => topPicks.All(topPick => !topPick.DoesViolateConstraint(constraintPick)));
 
-        return true;
+    private string PicksDebugString() => string.Join(',', topPicks.Select(p => $"{p.Count} {p.Color}"));
+    public string DebugString() => $"[Game {Id}: {PicksDebugString()}]";
+}
+
+class Pick
+{
+    private readonly Color color;
+
+    public Pick(int count, Color color)
+    {
+        Count = count;
+        this.color = color;
+    }
+
+    public int Count {get; set;}
+
+    public Color Color => color;
+
+    public bool DoesViolateConstraint(Pick constraintPick)
+    {
+        return color == constraintPick.Color && Count > constraintPick.Count;
     }
 }
 
-record Pick(int Count, string Color);
+enum Color 
+{
+    Red,
+    Green,
+    Blue
+}
