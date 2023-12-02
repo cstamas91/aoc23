@@ -7,71 +7,77 @@ var constraints = new List<Pick>()
     new(14, Color.Blue)
 };
 
-static Game ProcessLine(string line)
+var puzzle = new Puzzle(lines, constraints);
+
+var answer = puzzle.GetAnswer();
+
+Console.WriteLine($"The answer is: {answer}");
+
+class Puzzle
 {
-    var head = line.Split(':')[0];
-    var tail = line.Split(':')[1]; 
-
-    var idParsed = int.TryParse(head.Replace("Game ", ""), out int id);
-
-    var picks = ProcessPicks(tail);
-
-    var topPicks = new List<Pick>();
-
-    foreach (var pick in picks) 
-    {
-        var currentTopPickForColor = topPicks.FirstOrDefault(p => p.Color == pick.Color);
-
-        if (currentTopPickForColor is not null) 
+    private readonly List<Game> games = new();
+    private readonly List<Game> goodGames = new();
+    public Puzzle(string[] inputLines, List<Pick> constraints)
+    {        
+        foreach (var line in inputLines)
         {
-            if (currentTopPickForColor.Count < pick.Count)
+            var game = new Game(line); 
+            games.Add(game);
+            if (game.IsConstraintSatisfied(constraints))
             {
-                currentTopPickForColor.Count = pick.Count;
+                goodGames.Add(game);
             }
-        }
-        else 
-        {
-            topPicks.Add(pick);
         }
     }
 
-    return new Game(id, topPicks);
+    public PuzzleAnswer GetAnswer()
+    {
+        return new(goodGames.Sum(g => g.Id), games.Sum(g => g.Power));
+    }
+
+    public record PuzzleAnswer(int IdSum, int PowerSum);
 }
-
-static List<Pick> ProcessPicks(string picksString)
-{
-    var pickSubstrings = picksString.Split(',').SelectMany(s => s.Split(';'));
-    return pickSubstrings.Select(ProcessPick).ToList();
-}
-
-static Pick ProcessPick(string pickSubstring)
-{
-    var segments = pickSubstring.TrimStart().Split(' ');
-    return new Pick(int.Parse(segments[0]), Enum.Parse<Color>(segments[1], ignoreCase: true));
-}
-
-static void GetGoodGameIdSum(string[] lines, List<Pick> constraints)
-{
-    var ggIdSum = 0;
-    var powerSum = 0;
-
-    var games = lines.Select(ProcessLine);
-
-    var goodGames = games.Where(g => g.IsConstraintSatisfied(constraints)).ToList();
-    ggIdSum = goodGames.Sum(g => g.Id);
-    powerSum = games.Sum(g => g.Power);
-
-    Console.WriteLine($"IdSum: {ggIdSum}, PowerSum: {powerSum}");
-}
-
-GetGoodGameIdSum(lines, constraints);
 
 class Game
 {
-    private readonly List<Pick> topPicks;
+    private readonly List<Pick> topPicks = new();
 
     public int Power => topPicks.Aggregate(1, (curr, next) => curr * next.Count);
     public int Id {get; private set;}
+
+    public Game(string line)
+    {
+        var head = line.Split(':')[0];
+        var tail = line.Split(':')[1].Replace(';', ','); 
+
+        if (int.TryParse(head.Replace("Game ", ""), out int id))
+        {
+            Id = id;
+        }
+        else
+        {
+            throw new ArgumentException("Game id could not be parsed");
+        }
+
+        var picks = tail.Split(',').Select(pickSubstring => new Pick(pickSubstring));
+
+        foreach (var pick in picks) 
+        {
+            var currentTopPickForColor = topPicks.FirstOrDefault(p => p.Color == pick.Color);
+
+            if (currentTopPickForColor is not null) 
+            {
+                if (currentTopPickForColor.Count < pick.Count)
+                {
+                    currentTopPickForColor.Count = pick.Count;
+                }
+            }
+            else 
+            {
+                topPicks.Add(pick);
+            }
+        }
+    }
 
     public Game(int id, List<Pick> picks)
     {
@@ -90,6 +96,13 @@ class Pick
 {
     private readonly Color color;
 
+    public Pick(string pickSubstring)
+    {
+        var segments = pickSubstring.TrimStart().Split(' ');
+        Count = int.Parse(segments[0]);
+        color = ParseColor(segments[1]);
+    }
+
     public Pick(int count, Color color)
     {
         Count = count;
@@ -103,6 +116,17 @@ class Pick
     public bool DoesViolateConstraint(Pick constraintPick)
     {
         return color == constraintPick.Color && Count > constraintPick.Count;
+    }
+
+    private static Color ParseColor(string colorString)
+    {
+        return colorString switch
+        {
+            "red" => Color.Red,
+            "blue" => Color.Blue,
+            "green" => Color.Green,
+            _ => throw new ArgumentException($"unknown color: {colorString}"),
+        };
     }
 }
 
