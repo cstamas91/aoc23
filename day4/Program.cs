@@ -1,24 +1,40 @@
 ﻿using System.Collections.Immutable;
-using System.Text.RegularExpressions;
 
 var lines = File.ReadAllText("input").Split(Environment.NewLine);
 
-var pointSum = 0;
+var cardTallies = lines.Select(l => new CardTally(new Card(l), 1)).ToList();
 
-foreach (var line in lines)
+for (int i = 0; i < cardTallies.Count; i++)
 {
-    var card = new Card(line);
-    pointSum += card.Points;
+    for (int copy = 0; copy < cardTallies[i].Copies; copy++)
+    {
+        for (int j = i+1; j<= i+cardTallies[i].Card.MatchCount; j++)
+        {
+            cardTallies[j].Copies++;
+        }
+    }
 }
 
-Console.WriteLine(pointSum);
+Console.WriteLine(cardTallies.Sum(c => c.Copies));
+
+public class CardTally
+{
+    public Card Card {get;set;}
+    public int Copies {get;set;}
+
+    public CardTally(Card card, int copies)
+    {
+        Card = card;
+        Copies = copies;
+    }
+}
 
 public class Card
 {
     public int Id {get;init;}
     public ImmutableHashSet<int> WinningNumbers {get;init;}
     public ImmutableHashSet<int> Numbers {get;init;}
-    private int MatchCount => WinningNumbers.Intersect(Numbers).Count;
+    public int MatchCount => WinningNumbers.Intersect(Numbers).Count;
     public int Points => (int)Math.Pow(2, MatchCount - 1);
     public Card(string line)
     {
