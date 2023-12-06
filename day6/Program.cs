@@ -1,22 +1,18 @@
 ﻿var input = File.ReadAllText(args[0])
     .Split(Environment.NewLine);
 
-var times = input[0].Replace("Time:", "").Trim().Split(" ").Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)).Select(int.Parse).ToList();
-var records = input[1].Replace("Distance:", "").Trim().Split(" ").Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)).Select(int.Parse).ToList();
-var races = new List<Race>();
-for (int i = 0; i < times.Count; i++)
-{
-    races.Add(new Race(times[i], records[i]));
-}
+var time = long.Parse(input[0].Replace("Time:", "").Replace(" ", ""));
+var record = long.Parse(input[1].Replace("Distance:", "").Replace(" ", ""));
+var race = new Race(time, record);
 
-Console.WriteLine(races.Aggregate(1, (curr, nxt) => curr * nxt.GetRecordBeatingInputCount()));
+Console.WriteLine(race.GetRecordBeatingInputCount());
 
 class Race
 {
-    private int Length {get;init;}
-    private int RecordToBeat {get;init;}
+    private long Length {get;init;}
+    private long RecordToBeat {get;init;}
 
-    public Race(int length, int recordToBeat)
+    public Race(long length, long recordToBeat)
     {
         Length = length;
         RecordToBeat = recordToBeat;
@@ -24,6 +20,15 @@ class Race
 
     public int GetRecordBeatingInputCount()
     {
-        return Enumerable.Range(0, Length).Where(i => i * (Length - i) > RecordToBeat).Count();
+        var res = 0;
+        for (long i = 0; i < Length; i++)
+        {
+            if (i*(Length-i) > RecordToBeat)
+            {
+                res++;
+            }
+        }
+
+        return res;
     }
 }
