@@ -1,4 +1,4 @@
-﻿var lines = File.ReadAllText(args[0]).Split(Environment.NewLine);
+﻿var lines = File.ReadAllText(args.Length > 0 ? args[0] : "example").Split(Environment.NewLine);
 
 var hands = new List<Hand>();
 foreach (var line in lines)
@@ -11,7 +11,7 @@ hands = hands.OrderBy(h => h).ToList();
 long points = 0;
 for (int i = 1; i <= hands.Count; i++)
 {
-    Console.WriteLine(hands[i-1].Type);
+    Console.WriteLine($"{i,4}. {hands[i-1]}");
     points += hands[i-1].Bid * i;
 }
 
@@ -19,95 +19,98 @@ Console.WriteLine(points);
 
 class Hand : IComparable
 {
+
+    public override string ToString()
+    {
+        return $"{Type,12} ({string.Join(string.Empty, originalInputString)})";
+    }
+    private string originalInputString;
     private List<CardType> originalInput;
     private readonly List<CardType> Cards;
+    private CardSet currentCardSet;
+    private CardSet? jokerCardSet;
     public HandType Type {get;init;}
     public long Bid {get;init;}
     public Hand(string input)
     {
         var parts = input.Split(' ');
         Bid = long.Parse(parts[1]);
+        originalInputString = parts[0];
         Cards = parts[0].Select(ConvertCard)
             .OrderByDescending(c => c)
             .ToList();
-        Type = GetHandType();
         originalInput = parts[0].Select(ConvertCard).ToList();
+        currentCardSet = new(){Type=Cards[0], Count = 1};
+        if (currentCardSet.Type == CardType.Joker)
+        {
+            jokerCardSet = currentCardSet;
+        }
+        Type = GetHandType();
     }
 
+    private CardSet? firstCardSet;
+    private CardSet? secondCardSet;
     private HandType GetHandType()
     {
         int i = 1;
-        CardSet cardSet = new() { Type = Cards[0], Count = 1};
-        var handTypes = new List<HandType>();
         while (i < Cards.Count)
         {
-            if (Cards[i] == cardSet.Type)
+            if (Cards[i] == currentCardSet.Type)
             {
-                cardSet.Count++;
+                currentCardSet.Count++;
             }
             else
             {
-                var handType = cardSet.ToHandType();
-                if ((handType.Strength == HandType.HandStrength.HighCard &&
-                    !handTypes.Any(ht => ht.Strength == HandType.HandStrength.HighCard)) || 
-                    handType.Strength != HandType.HandStrength.HighCard)
-                {
-                    handTypes.Add(handType);
-                }
-
-                cardSet = new() {Type=Cards[i], Count = 1};
+                CloseCardSet(i);
             }
 
             i++;
         }
 
-        handTypes.Add(cardSet.ToHandType());
+        CloseCardSet(i-1);
 
-        return ReduceHandTypes(handTypes);        
+        if (jokerCardSet is not null && firstCardSet!.Type != CardType.Joker)
+        {
+            firstCardSet!.Count += jokerCardSet.Count;
+            if (firstCardSet.Count + secondCardSet?.Count > 5)
+            {
+                secondCardSet = null;
+            }
+        }
+
+        if (secondCardSet is not null)
+        {
+            return new HandType(firstCardSet!, secondCardSet);
+        }
+
+        return new HandType(firstCardSet!);
     }
 
-    private static HandType ReduceHandTypes(List<HandType> handTypes)
+    private void CloseCardSet(int i)
     {
-        var groupings = handTypes.GroupBy(ht => ht.Strength).ToDictionary(g => g.Key, g => g.ToList());
+        if (currentCardSet.Type == CardType.Joker)
+        {
+            jokerCardSet = currentCardSet;
+        }
 
-        if (groupings.ContainsKey(HandType.HandStrength.FiveOfAKind))
+        if (firstCardSet is null)
         {
-            return groupings[HandType.HandStrength.FiveOfAKind].First();
+            firstCardSet = currentCardSet;
         }
-        else if (groupings.ContainsKey(HandType.HandStrength.FourOfAKind))
+        else if (currentCardSet.Type != CardType.Joker && (currentCardSet.Count > 1 || firstCardSet.Type == CardType.Joker))
         {
-            return groupings[HandType.HandStrength.FourOfAKind].First();
-        }
-        else if (groupings.ContainsKey(HandType.HandStrength.ThreeOfAKind))
-        {
-            if (groupings.ContainsKey(HandType.HandStrength.OnePair))
+            if (firstCardSet.Count == 1 || firstCardSet.Type == CardType.Joker)
             {
-                return new HandType(
-                    HandType.HandStrength.FullHouse,
-                    groupings[HandType.HandStrength.ThreeOfAKind].First().Of,
-                    groupings[HandType.HandStrength.OnePair].First().Of);
-            } 
-            else 
-            {
-                return groupings[HandType.HandStrength.ThreeOfAKind].First();
+                firstCardSet = currentCardSet;
             }
-        }
-        else if (groupings.ContainsKey(HandType.HandStrength.OnePair))
-        {
-            if (groupings[HandType.HandStrength.OnePair].Count == 2)
+            else
             {
-                return new HandType(
-                    HandType.HandStrength.TwoPair,
-                    groupings[HandType.HandStrength.OnePair][0].Of,
-                    groupings[HandType.HandStrength.OnePair][1].Of);
+                secondCardSet = currentCardSet;
             }
 
-            return groupings[HandType.HandStrength.OnePair].First();
         }
-        else
-        {
-            return groupings[HandType.HandStrength.HighCard].MaxBy(t => t.Of)!;
-        }
+
+        currentCardSet = new() {Type=Cards[i], Count = 1};
     }
 
     private static CardType ConvertCard(char character)
@@ -158,28 +161,16 @@ class Hand : IComparable
     }
 }
 
-struct CardSet
+class CardSet
 {
     public CardType Type {get;init;}
     public int Count {get;set;}
-
-    public readonly HandType ToHandType()
-    {
-        return Count switch 
-        {
-            1 => new HandType(HandType.HandStrength.HighCard, Type),
-            2 => new HandType(HandType.HandStrength.OnePair, Type),
-            3 => new HandType(HandType.HandStrength.ThreeOfAKind, Type),
-            4 => new HandType(HandType.HandStrength.FourOfAKind, Type),
-            5 => new HandType(HandType.HandStrength.FiveOfAKind, Type),
-            _ => throw new InvalidOperationException("cant have more than five of a kind.")
-        };
-    }
 }
 
 enum CardType
 {
-    Two = 0,
+    Joker = 0,
+    Two,
     Three,
     Four,
     Five,
@@ -188,7 +179,6 @@ enum CardType
     Eight,
     Nine,
     Ten,
-    Joker,
     Queen,
     King,
     Ace
@@ -200,14 +190,31 @@ class HandType : IComparable
     public HandStrength Strength {get;init;}
     public CardType Of {get;init;}
     public CardType? And {get;init;}
-    public HandType(HandStrength strength, CardType of)
+
+
+    public HandType(CardSet set)
     {
-        Strength = strength;
-        Of = of;
+        (Strength, Of) = set.Count switch 
+        {
+            1 => (HandStrength.HighCard, set.Type),
+            2 => (HandStrength.OnePair, set.Type),
+            3 => (HandStrength.ThreeOfAKind, set.Type),
+            4 => (HandStrength.FourOfAKind, set.Type),
+            5 => (HandStrength.FiveOfAKind, set.Type),
+            _ => throw new ArgumentException("invalid number of cards")
+        };
     }
-    public HandType(HandStrength strength, CardType of, CardType and) : this(strength, of)
+
+    public HandType(CardSet firstSet, CardSet secondSet)
     {
-        And = and;
+        (Strength, Of, And) = (firstSet.Count, secondSet.Count) switch {
+            (2,2) => (HandStrength.TwoPair, firstSet.Type, secondSet.Type),
+            (3,2) or (2,3) => (HandStrength.FullHouse, firstSet.Type, secondSet.Type),
+            (3, _) => (HandStrength.ThreeOfAKind, firstSet.Type, secondSet.Type),
+            (4, _) => (HandStrength.FourOfAKind, firstSet.Type, secondSet.Type),
+            (5, _) => (HandStrength.FiveOfAKind, firstSet.Type, secondSet.Type),
+            _ => throw new ArgumentException("cant have more than 5 cards or less than 1")
+        };    
     }
 
     public enum HandStrength 
@@ -223,12 +230,7 @@ class HandType : IComparable
 
     public override string ToString()
     {
-        if (And is null)
-        {
-            return $"[{Strength} of {Of}]";
-        }
-
-        return $"[{Strength} of {Of} and {And}]";
+        return Strength.ToString();
     }
 
     public int CompareTo(object? obj)
@@ -241,23 +243,5 @@ class HandType : IComparable
         HandType other = (HandType)obj;
 
         return Strength.CompareTo(other.Strength);
-
-        // if (Strength > other.Strength)
-        // {
-        //     return 1;
-        // } 
-        // else if (Strength < other.Strength)
-        // {
-        //     return -1;
-        // }
-        // else 
-        // {
-        //     var ofComparison = Of.CompareTo(other.Of);
-        //     if (ofComparison == 0 && And is not null)
-        //     {
-        //         return And.Value.CompareTo(other.And!.Value);
-        //     }
-        //     return ofComparison;
-        // }
     }
 }
