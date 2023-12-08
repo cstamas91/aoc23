@@ -19,43 +19,36 @@ for (var i = 1; i < input.Length; i++)
 }
 
 var directionIndex = 0;
-var found = false;
 var currentNodes = GetStartingNodes(nodes);
-Console.WriteLine($"Starting from {currentNodes.Count} nodes");
-var stepsTaken = 0;
-while (!found)
+
+for (int i = 0; i < currentNodes.Count; i++)
 {
-    ConcurrentDictionary<int, Node> nextNodes = new();
-    Parallel.For(0, currentNodes.Count, i => 
-    {
-        nextNodes.AddOrUpdate(
-            i, 
-            i => Step(currentNodes[i], directions[directionIndex], nodes),
-            (i, curr) => curr);
-    });
+    var stepsTaken = 0;
+    var found = false;
+    var currentNode = currentNodes[i];
 
-    for (int i = 0; i < nextNodes.Count; i++)
+    while (!found)
     {
-        currentNodes[i] = nextNodes[i];
-    }
-    
-    stepsTaken++;
+        currentNode = Step(currentNode, directions[directionIndex], nodes);
+        stepsTaken++;
+        if (currentNode.Tag.EndsWith('Z'))
+        {
+            found = true;
+            currentNodes[i].MinSteps = stepsTaken;
+        }
 
-    Console.Write("\r{0} steps...", stepsTaken);
-
-    if (currentNodes.All(n => n.Tag.EndsWith('Z')))
-    {
-        found = true;
-    }
-
-    directionIndex++;
-    if (directionIndex == directions.Length)
-    {
-        directionIndex = 0;
+        directionIndex++;
+        if (directionIndex == directions.Length)
+        {
+            directionIndex = 0;
+        }
     }
 }
 
-Console.WriteLine(stepsTaken);
+foreach (var node in currentNodes)
+{
+    Console.WriteLine(node.MinSteps);
+}
 
 static Node Step(Node currentNode, char v, Dictionary<string, Node> nodes)
 {
@@ -77,6 +70,7 @@ class Node
     public string Tag {get;init;}
     public string Left {get;init;}
     public string Right {get;init;}
+    public int MinSteps {get;set;} = int.MaxValue;
     public Node(string input)
     {
         var parts = input.Split(" = ");
