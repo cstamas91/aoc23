@@ -21,6 +21,7 @@ for (var i = 1; i < input.Length; i++)
 var directionIndex = 0;
 var found = false;
 var currentNodes = GetStartingNodes(nodes);
+Console.WriteLine($"Starting from {currentNodes.Count} nodes");
 var stepsTaken = 0;
 while (!found)
 {
