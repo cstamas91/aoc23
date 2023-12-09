@@ -7,4 +7,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <None Update="input" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="example" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
