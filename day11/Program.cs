@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Collections.Concurrent;
 
 var input = File.ReadAllText("input").Split(Environment.NewLine);
 
@@ -13,13 +14,17 @@ class StarMap
     const char EXPANSION_CHAR='.';
     #endif
     const char GALAXY_CHAR='#';
+    const long EXPANSION_RATE = 999_999;
     
     private readonly char[,] nodes;
-    private readonly int height;
-    private readonly int width;
+    private readonly long height;
+    private readonly long width;
 
-    private readonly Dictionary<int, (int Row,int Col)> Galaxies = new();
-    public readonly Dictionary<(int From, int To), int> Paths = new();
+    private List<int> expandableRows = new();
+    private List<int> expandableColumns = new();
+
+    private readonly Dictionary<long, (long Row,long Col)> Galaxies = new();
+    public readonly ConcurrentDictionary<(long From, long To), long> Paths = new();
     public StarMap(string[] lines)
     {
         var (initialNodes, initialHeight, initialWidth) = CreateInitialNodes(lines);
@@ -30,22 +35,16 @@ class StarMap
 
     private void BuildPathLengthMap()
     {
-        foreach (var g in Galaxies.Keys)
+        Parallel.ForEach(Galaxies.Keys, g => 
         {
-            foreach (var gg in Galaxies.Keys)
+            foreach (var gg in Galaxies.Keys.Where(k => k > g))
             {
-                if (g == gg)
-                {
-                    continue;
-                }
-
-                if (!Paths.Any(kvp => (kvp.Key.From == g && kvp.Key.To == gg) ||
-                                      (kvp.Key.From == gg && kvp.Key.To == g) ))
-                {
-                    Paths.Add((g, gg), FindShortestPathLengthTo(g, gg));
-                }
+                Paths.AddOrUpdate(
+                    (g, gg), 
+                    x => ShortestPathFast(x.From, x.To),
+                    (x, _) => ShortestPathFast(x.From, x.To));
             }
-        }
+        });
     }
 
     private static bool CloserThan((int r, int c) p1, (int r, int c) p2, (int r, int c) to)
@@ -59,66 +58,75 @@ class StarMap
         return false;
     }
 
-    private int FindShortestPathLengthTo(int from, int to)
+    private long ShortestPathFast(long from, long to)
     {
-        var (FromRow, FromCol) = Galaxies[from];
+        var (fromR, fromC) = Galaxies[from];
+        var (toR, toC) = Galaxies[to];
 
-        var (ToRow, ToCol) = Galaxies[to];
+        fromR += expandableRows.Count(r => r < fromR) * EXPANSION_RATE;
+        fromC += expandableColumns.Count(c => c < fromC) * EXPANSION_RATE;
+        toR += expandableRows.Count(r => r < toR) * EXPANSION_RATE;
+        toC += expandableColumns.Count(c => c < toC) * EXPANSION_RATE;
 
-        var nextSteps = GetAdjacentIndexPairs(FromRow, FromCol)
-            .Where(p => CloserThan(p, (FromRow, FromCol), (ToRow, ToCol)))
-            .ToList();
-
-        int shortestPathLength = int.MaxValue;
-
-        foreach (var start in nextSteps)
-        {
-            var allPaths = FindAllPathsTo(start, (ToRow, ToCol));
-            var localShortestPath = allPaths.Where(p => p.Length > 0).MinBy(p => p.Length)?.Length ?? int.MaxValue;
-            if (localShortestPath < shortestPathLength)
-            {
-                shortestPathLength = localShortestPath;
-            }
-        }
-
-        return shortestPathLength + 1;
+        return Math.Abs(fromR - toR) + Math.Abs(fromC - toC);
     }
 
-    private List<Path> FindAllPathsTo((int r, int c) from, (int r, int c) to)
-    {
-        var nextSteps = GetAdjacentIndexPairs(from.r, from.c)
-            .Where(p => CloserThan(p, from, to))
-            .ToList();
+    // private int FindShortestPathLengthTo(int from, int to)
+    // {
+    //     var (FromRow, FromCol) = Galaxies[from];
 
-        if (nextSteps.Contains(to))
-        {
-            return new List<Path> {new(from)};
-        }
+    //     var (ToRow, ToCol) = Galaxies[to];
 
-        if (nextSteps.Count == 0)
-        {
-            return new List<Path>();
-        }
+    //     var nextSteps = GetAdjacentIndexPairs(FromRow, FromCol)
+    //         .Where(p => CloserThan(p, (FromRow, FromCol), (ToRow, ToCol)))
+    //         .ToList();
 
-        var paths = nextSteps.Select(s => FindAllPathsTo(s, to)).SelectMany(p => p).Where(p => p.Length > 0).ToList();
-        foreach (var path in paths)
-        {
-            path.Prepend(from);
-        }
+    //     ConcurrentBag<int> bag = new();
 
-        return paths;
-    }
+    //     Parallel.ForEach(nextSteps, (start) => 
+    //     {
+    //         var localShortestPath = FindAllPathsTo(start, (ToRow, ToCol)).Where(p => p.Length > 0).MinBy(p => p.Length)?.Length ?? int.MaxValue;
+    //         bag.Add(localShortestPath);
+    //     });
 
-    private List<(int row, int col)> GetAdjacentIndexPairs(int row, int col)
-    {
-        var values = new List<(int row, int col)>
-        {
-            (row+1, col),
-            (row, col+1),
-            (row, col-1)
-        };
-        return values.Where(p => p.row >= 0 && p.row <= height && p.col >= 0 && p.col <= width).ToList();
-    }
+    //     return bag.Min() + 1;
+    // }
+
+    // private List<Path> FindAllPathsTo((int r, int c) from, (int r, int c) to)
+    // {
+    //     var nextSteps = GetAdjacentIndexPairs(from.r, from.c)
+    //         .Where(p => CloserThan(p, from, to))
+    //         .ToList();
+
+    //     if (nextSteps.Contains(to))
+    //     {
+    //         return new List<Path> {new(from)};
+    //     }
+
+    //     if (nextSteps.Count == 0)
+    //     {
+    //         return new List<Path>();
+    //     }
+
+    //     var paths = nextSteps.Select(s => FindAllPathsTo(s, to)).SelectMany(p => p).Where(p => p.Length > 0).ToList();
+    //     foreach (var path in paths)
+    //     {
+    //         path.Prepend(from);
+    //     }
+
+    //     return paths;
+    // }
+
+    // private List<(int row, int col)> GetAdjacentIndexPairs(int row, int col)
+    // {
+    //     var values = new List<(int row, int col)>
+    //     {
+    //         (row+1, col),
+    //         (row, col+1),
+    //         (row, col-1)
+    //     };
+    //     return values.Where(p => p.row >= 0 && p.row <= height && p.col >= 0 && p.col <= width).ToList();
+    // }
 
     public void Print()
     {
@@ -137,13 +145,13 @@ class StarMap
         }
     }
 
-    private (char[,], int, int) Expand(
+    private (char[,], long, long) Expand(
         char[,] mapBeforeExpansion,
-        int initialHeight,
-        int initialWidth)
+        long initialHeight,
+        long initialWidth)
     {
-        var rowsToExpand = new HashSet<int>();
-        var colsToExpand = new HashSet<int>();
+        var rowsToExpand = new HashSet<long>();
+        var colsToExpand = new HashSet<long>();
         for (int row = 0; row < initialHeight; row++)
         {
             var isEmptyRow = true;
@@ -157,7 +165,7 @@ class StarMap
 
             if (isEmptyRow)
             {
-                rowsToExpand.Add(row + rowsToExpand.Count);
+                expandableRows.Add(row);
             }
         }
 
@@ -174,44 +182,63 @@ class StarMap
 
             if (isEmptyCol)
             {
-                colsToExpand.Add(col + colsToExpand.Count);
+                expandableColumns.Add(col);
             }
         }
 
-        var newHeight = initialHeight+rowsToExpand.Count;
-        var newWidth = initialWidth+colsToExpand.Count;
-        var newMap = new char[newHeight,newWidth];
-
-        for (int row=0,oldRow=0; row < newHeight; row++,oldRow++)
+        for (int i = 0; i < initialHeight; i++)
         {
-            for (int col=0,oldCol=0; col < newWidth; col++,oldCol++)
+            for (int j = 0; j < initialWidth; j++)
             {
-                if (mapBeforeExpansion[oldRow,oldCol] == GALAXY_CHAR)
+                if (mapBeforeExpansion[i,j] == GALAXY_CHAR)
                 {
-                    Galaxies.Add(Galaxies.Count + 1, (row,col));
+                    Galaxies.Add(Galaxies.Count + 1, (i,j));
                 }
-
-                newMap[row,col] = mapBeforeExpansion[oldRow,oldCol];
-
-                if (colsToExpand.Contains(col))
-                {
-                    newMap[row,col+1]=EXPANSION_CHAR;
-                    col++;
-                }
-            }
-
-            if (rowsToExpand.Contains(row))
-            {
-                for (int j = 0; j < newWidth; j++)
-                {
-                    newMap[row+1,j] = EXPANSION_CHAR;
-                }
-
-                row++;
             }
         }
 
-        return (newMap, newHeight, newWidth);
+        return (new char[0,0], 0,0);
+
+        // var newHeight = initialHeight+(rowsToExpand.Count * EXPANSION_RATE);
+        // var newWidth = initialWidth+(colsToExpand.Count * EXPANSION_RATE);
+        // var newMap = new char[newHeight,newWidth];
+
+        // for (long row=0,oldRow=0; row < newHeight; row++,oldRow++)
+        // {
+        //     for (long col=0,oldCol=0; col < newWidth; col++,oldCol++)
+        //     {
+        //         if (mapBeforeExpansion[oldRow,oldCol] == GALAXY_CHAR)
+        //         {
+        //             Galaxies.Add(Galaxies.Count + 1, (row,col));
+        //         }
+
+        //         newMap[row,col] = mapBeforeExpansion[oldRow,oldCol];
+
+        //         if (colsToExpand.Contains(oldCol))
+        //         {
+        //             for (int i = 0; i < EXPANSION_RATE; i++)
+        //             {
+        //                 newMap[row, col + i]=EXPANSION_CHAR;
+        //             }
+        //             col+=EXPANSION_RATE;
+        //         }
+        //     }
+
+        //     if (rowsToExpand.Contains(oldRow))
+        //     {
+        //         for (int i = 0; i < EXPANSION_RATE; i++)
+        //         {
+        //             for (int j = 0; j < newWidth; j++)
+        //             {
+        //                 newMap[row+i,j] = EXPANSION_CHAR;
+        //             }
+        //         }
+
+        //         row+=EXPANSION_RATE;
+        //     }
+        // }
+
+        // return (newMap, newHeight, newWidth);
     }
 
     private static (char[,], int, int) CreateInitialNodes(string[] lines)
