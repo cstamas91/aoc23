@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 var input = File.ReadAllText("example").Split(Environment.NewLine);
@@ -24,8 +25,8 @@ class Record
     public Record(string input)
     {
         var parts = input.Split(' ');
-        conditionPart = parts[0];
-        revisedRecord = parts[1].Split(',').Select(int.Parse).ToList();
+        conditionPart = string.Join('?', Enumerable.Range(0, 5).Select(_ => parts[0]));
+        revisedRecord = string.Join(',', Enumerable.Range(0, 5).Select(_ => parts[1])).Split(',').Select(int.Parse).ToList();
         revisionRegex = BuildRegex();
     }
 
@@ -37,9 +38,9 @@ class Record
     private Regex BuildRegex()
     {
         var sb = new StringBuilder();
-        sb.Append(@"(^|\.+)");
-        sb.Append(string.Join(@"[\.\?]+", revisedRecord.Select(i => $@"[#\?]{{{i}}}")));
-        sb.Append(@"($|\.+)");
+        sb.Append(@"^(\.*)");
+        sb.Append(string.Join(@"[\.]+", revisedRecord.Select(i => $@"[#]{{{i}}}")));
+        sb.Append(@"($|(\.+$))");
 
         return new Regex(sb.ToString());
     }
@@ -81,6 +82,10 @@ class Record
     public int GetPossiblePermutationCount()
     {
         var permutations = GetPermutations();
+        // foreach (var p in permutations)
+        // {
+        //     Console.WriteLine($"{p} -> {IsRevisedRecordSatisfied(p)}");
+        // }
         return permutations.Count(IsRevisedRecordSatisfied);
     }
 }
